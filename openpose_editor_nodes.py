@@ -5,7 +5,7 @@ from .util import draw_pose_json, draw_pose, extend_scalelist, pose_normalized
 
 OpenposeJSON = dict
 
-class OpenposeEditorNode:
+class OpenposeEditorNode10:
     @classmethod
     def INPUT_TYPES(s):
         return {
