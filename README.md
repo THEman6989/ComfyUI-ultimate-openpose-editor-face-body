@@ -39,7 +39,7 @@ If you like the project, please give me a star! ⭐
 - Restart ComfyUI
 
 ## Usage
-- Insert node by `Right Click -> ultimate-openpose -> Openpose Editor Node`
+- Insert node by `Right Click -> ultimate-openpose -> OpenposeEditorNode10`
 - `Right Click` on the node and select the `Open in Openpose Editor` to do the editting
     <p align="center">
       <img src="assets/editor_example_1.png" />
@@ -75,7 +75,7 @@ The node is very functional and rich features to fit all your needs.
     </p>
 
 ## New Node
-A new procedure editting node [AppendageEditorNode](https://github.com/westNeighbor/ComfyUI-ultimate-openpose-editor/pull/10) is added.
+A new procedure editting node [AppendageEditorNode10](https://github.com/westNeighbor/ComfyUI-ultimate-openpose-editor/pull/10) is added.
     <p align="center">
       <img src="assets/appendage_node.png" />
     </p>
