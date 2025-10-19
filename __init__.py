@@ -1,12 +1,12 @@
-from .openpose_editor_nodes import OpenposeEditorNode
-from .appendage_editor_nodes import AppendageEditorNode
+from .openpose_editor_nodes import OpenposeEditorNode10
+from .appendage_editor_nodes import AppendageEditorNode10
 
 
 WEB_DIRECTORY = "js"
 
 NODE_CLASS_MAPPINGS = {
-    "OpenposeEditorNode10": OpenposeEditorNode,
-    "AppendageEditorNode10": AppendageEditorNode,
+    "OpenposeEditorNode10": OpenposeEditorNode10,
+    "AppendageEditorNode10": AppendageEditorNode10,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {

@@ -5,7 +5,7 @@ import torch
 import numpy as np
 from .util import scale
 
-class AppendageEditorNode:
+class AppendageEditorNode10:
     @staticmethod
     def normalize_scale_parameter(scale_param, target_length, behavior):
         """
