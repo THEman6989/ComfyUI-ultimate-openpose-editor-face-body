@@ -78,7 +78,7 @@ class AppendageEditorNode:
                     "left_upper_leg", "left_lower_leg", "left_full_leg",
                     "right_upper_leg", "right_lower_leg", "right_full_leg",
                     "left_hand", "right_hand", "left_foot", "right_foot",
-                    "torso", "shoulders"
+                    "torso", "shoulders", "head", "face", "full_person"
                 ], {
                     "default": "left_upper_arm"
                 }),
@@ -175,6 +175,10 @@ class AppendageEditorNode:
 
                     if appendage_type in ["left_hand", "right_hand"]:
                         self._edit_hand_appendage(person, appendage_type, current_scale, current_x_offset, current_y_offset, current_rotation, bidirectional_scale)
+                    elif appendage_type == "face":
+                        self._edit_face_appendage(person, current_scale, current_x_offset, current_y_offset, current_rotation, bidirectional_scale)
+                    elif appendage_type == "full_person":
+                        self._edit_full_person(person, current_scale, current_x_offset, current_y_offset, current_rotation, bidirectional_scale)
                     else:
                         self._edit_body_appendage(person, appendage_type, current_scale, current_x_offset, current_y_offset, current_rotation, bidirectional_scale)
 
@@ -201,7 +205,7 @@ class AppendageEditorNode:
                 return
 
         # Apply transformations
-        new_keypoints = self._apply_transformations(keypoints, scale_factor, x_offset, y_offset, rotation, pivot, bidirectional_scale)
+        new_keypoints = self._apply_transformations(keypoints, scale_factor, x_offset, y_offset, rotation, pivot, bidirectional_scale, pivot_index=0)
         person[keypoint_field] = new_keypoints
 
     def _edit_body_appendage(self, person, appendage_type, scale_factor, x_offset, y_offset, rotation, bidirectional_scale):
@@ -256,6 +260,35 @@ class AppendageEditorNode:
 
         person['pose_keypoints_2d'] = new_keypoints
 
+    def _edit_face_appendage(self, person, scale_factor, x_offset, y_offset, rotation, bidirectional_scale):
+        """Edit facial keypoints stored in face_keypoints_2d."""
+        keypoint_field = "face_keypoints_2d"
+
+        if keypoint_field not in person or not person[keypoint_field]:
+            return
+
+        keypoints = person[keypoint_field]
+        pivot = self._calculate_center_of_mass(keypoints)
+        if pivot is None:
+            return
+
+        new_keypoints = self._apply_transformations(keypoints, scale_factor, x_offset, y_offset, rotation, pivot, bidirectional_scale)
+        person[keypoint_field] = new_keypoints
+
+    def _edit_full_person(self, person, scale_factor, x_offset, y_offset, rotation, bidirectional_scale):
+        """Edit all available keypoints for a person (body, face, and hands)."""
+        pivot = self._calculate_global_pivot(person)
+        if pivot is None:
+            return
+
+        for field in ["pose_keypoints_2d", "face_keypoints_2d", "hand_left_keypoints_2d", "hand_right_keypoints_2d"]:
+            if field not in person or not person[field]:
+                continue
+
+            keypoints = person[field]
+            new_keypoints = self._apply_transformations(keypoints, scale_factor, x_offset, y_offset, rotation, pivot, bidirectional_scale)
+            person[field] = new_keypoints
+
     def _get_appendage_indices(self, appendage_type):
         """Get OpenPose keypoint indices for specific appendages and their pivot points."""
         # COCO 18-keypoint format (0-based) used by ComfyUI ControlNet Aux OpenPose Pose node:
@@ -286,6 +319,7 @@ class AppendageEditorNode:
             # Torso and Shoulders - COCO format
             "torso": ([1, 2, 5, 8, 11], 1),         # Neck, RShoulder, LShoulder, RHip, LHip (pivot: neck)
             "shoulders": ([2, 5], 1),               # RShoulder, LShoulder (pivot: neck)
+            "head": ([0, 1, 14, 15, 16, 17], 1),    # Nose, Neck, Eyes, Ears (pivot: neck)
         }
 
         result = appendage_map.get(appendage_type, ([], None))
@@ -351,7 +385,7 @@ class AppendageEditorNode:
         pivot_y = sum(p[1] for p in valid_points) / len(valid_points)
         return [pivot_x, pivot_y]
 
-    def _apply_transformations(self, keypoints, scale_factor, x_offset, y_offset, rotation, pivot, bidirectional_scale):
+    def _apply_transformations(self, keypoints, scale_factor, x_offset, y_offset, rotation, pivot, bidirectional_scale, pivot_index=None):
         """Apply transformations to all keypoints."""
         new_keypoints = []
         for i in range(0, len(keypoints), 3):
@@ -373,8 +407,8 @@ class AppendageEditorNode:
                             scaled_point = scale([x, y], scale_factor, pivot)
                             x, y = scaled_point[0], scaled_point[1]
                         else:
-                            # For hands, use unidirectional scaling from wrist
-                            x, y = self._apply_unidirectional_scale([x, y], scale_factor, pivot, i//3, 0)
+                            # For hands and other appendages, use unidirectional scaling from pivot
+                            x, y = self._apply_unidirectional_scale([x, y], scale_factor, pivot, i//3, pivot_index)
 
                     # Apply offset
                     x += x_offset
@@ -383,3 +417,22 @@ class AppendageEditorNode:
                 new_keypoints.extend([x, y, conf])
 
         return new_keypoints
+
+    def _calculate_global_pivot(self, person):
+        """Calculate a pivot using all available keypoints for a person."""
+        aggregated_points = []
+        for field in ["pose_keypoints_2d", "face_keypoints_2d", "hand_left_keypoints_2d", "hand_right_keypoints_2d"]:
+            keypoints = person.get(field)
+            if not keypoints:
+                continue
+
+            for i in range(0, len(keypoints), 3):
+                if len(keypoints) > i + 2 and keypoints[i + 2] > 0:
+                    aggregated_points.append([keypoints[i], keypoints[i + 1]])
+
+        if not aggregated_points:
+            return None
+
+        pivot_x = sum(p[0] for p in aggregated_points) / len(aggregated_points)
+        pivot_y = sum(p[1] for p in aggregated_points) / len(aggregated_points)
+        return [pivot_x, pivot_y]
