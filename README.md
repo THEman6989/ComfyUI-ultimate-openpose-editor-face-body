@@ -85,11 +85,13 @@ A new procedure editting node [AppendageEditorNode10](https://github.com/westNei
   - Hands/Feet: `left/right_hand`, `left/right_foot`
   - Torso: `torso`, `shoulders`
 - **Transform controls**: scale, rotation, x/y offset with animation support
-- **Scaling modes**: 
+- **Scaling modes**:
   - `bidirectional_scale=True`: scales in all directions from pivot
   - `bidirectional_scale=False`: scales only away from body (prevents adjacent part interference)
 - **Multi-person support** with configurable person index
 - **Animation-friendly** with list parameter handling and mismatch behaviors
+
+The enhanced **AppendageEditorNode10V2** builds on those controls with canvas-aware scaling limits and a toggleable "Only Scale Up" workflow. When enabled, the node automatically shifts the full pose upward so that lengthening legs keeps the feet grounded while preventing them from leaving the frame.
 
 One can chain N Appendage Editors together, and then render the final result.
 

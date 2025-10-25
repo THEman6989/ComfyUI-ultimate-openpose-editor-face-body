@@ -347,6 +347,273 @@ class AppendageEditorNode10:
         pivot_y = sum(p[1] for p in valid_points) / len(valid_points)
         return [pivot_x, pivot_y]
 
+
+class AppendageEditorNode10V2(AppendageEditorNode10):
+    @classmethod
+    def INPUT_TYPES(cls):
+        base = copy.deepcopy(super().INPUT_TYPES())
+        base["optional"]["limit_scale_to_canvas"] = ("BOOLEAN", {
+            "default": True,
+            "tooltip": "Prevent scaling beyond the canvas boundary by clamping growth when feet would exit the frame."
+        })
+        base["optional"]["only_scale_up"] = ("BOOLEAN", {
+            "default": False,
+            "tooltip": "When enabled, avoid shrink operations and shift the full body upward so feet remain grounded during scaling."
+        })
+        return base
+
+    def edit_appendage(self, POSE_KEYPOINT, appendage_type, scale=1.0, x_offset=0.0, y_offset=0.0, rotation=0.0,
+                       bidirectional_scale=False, person_index=-1, list_mismatch_behavior="loop",
+                       limit_scale_to_canvas=True, only_scale_up=False):
+        if POSE_KEYPOINT is None:
+            return (None,)
+
+        pose_data = copy.deepcopy(POSE_KEYPOINT)
+        if not isinstance(pose_data, list):
+            pose_data = [pose_data]
+
+        pose_count = len(pose_data)
+
+        scale_params = [scale, x_offset, y_offset, rotation]
+        output_length = self.determine_output_length(scale_params, pose_count, list_mismatch_behavior)
+
+        scale_list = self.normalize_scale_parameter(scale, output_length, list_mismatch_behavior)
+        x_offset_list = self.normalize_scale_parameter(x_offset, output_length, list_mismatch_behavior)
+        y_offset_list = self.normalize_scale_parameter(y_offset, output_length, list_mismatch_behavior)
+        rotation_list = self.normalize_scale_parameter(rotation, output_length, list_mismatch_behavior)
+        limit_list = self.normalize_scale_parameter(limit_scale_to_canvas, output_length, list_mismatch_behavior)
+        only_up_list = self.normalize_scale_parameter(only_scale_up, output_length, list_mismatch_behavior)
+
+        output_pose_data = []
+
+        for i in range(output_length):
+            pose_idx = i if i < pose_count else pose_count - 1
+            if list_mismatch_behavior == "loop" and pose_count > 0:
+                pose_idx = i % pose_count
+
+            current_frame = copy.deepcopy(pose_data[pose_idx])
+            current_scale = scale_list[i]
+            current_x_offset = x_offset_list[i]
+            current_y_offset = y_offset_list[i]
+            current_rotation = rotation_list[i]
+            limit_flag = bool(limit_list[i])
+            only_up_flag = bool(only_up_list[i])
+
+            if 'people' in current_frame:
+                people_to_edit = range(len(current_frame['people'])) if person_index == -1 else [person_index]
+                canvas_height = current_frame.get('canvas_height') if isinstance(current_frame, dict) else None
+
+                for person_idx_iter in people_to_edit:
+                    if person_idx_iter >= len(current_frame['people']):
+                        continue
+
+                    person = current_frame['people'][person_idx_iter]
+                    original_person_state = copy.deepcopy(person)
+                    original_bottom = self._get_person_bottom(original_person_state)
+
+                    effective_scale = current_scale
+                    if only_up_flag and isinstance(effective_scale, (int, float)) and effective_scale < 1.0:
+                        effective_scale = 1.0
+
+                    if (limit_flag and canvas_height is not None and isinstance(effective_scale, (int, float))
+                            and effective_scale > 1.0):
+                        effective_scale = self._limit_scale_for_canvas(
+                            original_person_state,
+                            appendage_type,
+                            effective_scale,
+                            current_x_offset,
+                            current_y_offset,
+                            current_rotation,
+                            bidirectional_scale,
+                            only_up_flag,
+                            canvas_height,
+                            original_bottom,
+                        )
+
+                    self._apply_appendage_edit(
+                        person,
+                        appendage_type,
+                        effective_scale,
+                        current_x_offset,
+                        current_y_offset,
+                        current_rotation,
+                        bidirectional_scale,
+                    )
+
+                    if only_up_flag and original_bottom is not None:
+                        self._apply_only_scale_up_shift(person, original_bottom)
+
+                    if limit_flag and canvas_height is not None:
+                        self._enforce_canvas_bounds(person, canvas_height)
+
+            output_pose_data.append(current_frame)
+
+        return (output_pose_data,)
+
+    def _apply_appendage_edit(self, person, appendage_type, scale_factor, x_offset, y_offset, rotation, bidirectional_scale):
+        if appendage_type in ["left_hand", "right_hand"]:
+            self._edit_hand_appendage(person, appendage_type, scale_factor, x_offset, y_offset, rotation, bidirectional_scale)
+        elif appendage_type == "face":
+            self._edit_face_appendage(person, scale_factor, x_offset, y_offset, rotation, bidirectional_scale)
+        elif appendage_type == "full_person":
+            self._edit_full_person(person, scale_factor, x_offset, y_offset, rotation, bidirectional_scale)
+        else:
+            self._edit_body_appendage(person, appendage_type, scale_factor, x_offset, y_offset, rotation, bidirectional_scale)
+
+    def _limit_scale_for_canvas(self, person_snapshot, appendage_type, target_scale, x_offset, y_offset, rotation,
+                               bidirectional_scale, only_scale_up, canvas_height, original_bottom):
+        if target_scale <= 1.0 or canvas_height is None:
+            return target_scale
+
+        if original_bottom is None:
+            original_bottom = self._get_person_bottom(person_snapshot)
+
+        if original_bottom is None:
+            return target_scale
+
+        bottom_at_target, _ = self._simulate_bottom(
+            person_snapshot,
+            appendage_type,
+            target_scale,
+            x_offset,
+            y_offset,
+            rotation,
+            bidirectional_scale,
+            only_scale_up,
+            original_bottom,
+        )
+
+        if bottom_at_target is None or bottom_at_target <= canvas_height:
+            return target_scale
+
+        baseline_scale = 1.0
+        bottom_at_baseline, _ = self._simulate_bottom(
+            person_snapshot,
+            appendage_type,
+            baseline_scale,
+            x_offset,
+            y_offset,
+            rotation,
+            bidirectional_scale,
+            only_scale_up,
+            original_bottom,
+        )
+
+        if bottom_at_baseline is None or bottom_at_baseline > canvas_height:
+            return baseline_scale
+
+        low = baseline_scale
+        high = target_scale
+        best = baseline_scale
+
+        for _ in range(25):
+            mid = (low + high) / 2.0
+            bottom_mid, _ = self._simulate_bottom(
+                person_snapshot,
+                appendage_type,
+                mid,
+                x_offset,
+                y_offset,
+                rotation,
+                bidirectional_scale,
+                only_scale_up,
+                original_bottom,
+            )
+
+            if bottom_mid is None:
+                best = mid
+                low = mid
+                continue
+
+            if bottom_mid <= canvas_height:
+                best = mid
+                low = mid
+            else:
+                high = mid
+
+        return best
+
+    def _simulate_bottom(self, person_snapshot, appendage_type, scale_factor, x_offset, y_offset, rotation, bidirectional_scale,
+                         only_scale_up, original_bottom):
+        simulated = self._simulate_basic_transform(
+            person_snapshot,
+            appendage_type,
+            scale_factor,
+            x_offset,
+            y_offset,
+            rotation,
+            bidirectional_scale,
+        )
+
+        bottom_after = self._get_person_bottom(simulated)
+        shift = 0.0
+
+        if only_scale_up and original_bottom is not None and bottom_after is not None and bottom_after > original_bottom:
+            shift = original_bottom - bottom_after
+            self._apply_vertical_shift(simulated, shift)
+            bottom_after = self._get_person_bottom(simulated)
+
+        return bottom_after, shift
+
+    def _simulate_basic_transform(self, person_snapshot, appendage_type, scale_factor, x_offset, y_offset, rotation,
+                                  bidirectional_scale):
+        simulated = copy.deepcopy(person_snapshot)
+        self._apply_appendage_edit(simulated, appendage_type, scale_factor, x_offset, y_offset, rotation, bidirectional_scale)
+        return simulated
+
+    def _apply_only_scale_up_shift(self, person, original_bottom):
+        new_bottom = self._get_person_bottom(person)
+        if new_bottom is None or original_bottom is None:
+            return
+
+        if new_bottom > original_bottom:
+            shift = original_bottom - new_bottom
+            self._apply_vertical_shift(person, shift)
+
+    def _enforce_canvas_bounds(self, person, canvas_height):
+        if canvas_height is None:
+            return
+
+        bottom = self._get_person_bottom(person)
+        if bottom is None:
+            return
+
+        if bottom > canvas_height:
+            shift = canvas_height - bottom
+            self._apply_vertical_shift(person, shift)
+
+    def _get_person_bottom(self, person):
+        max_y = None
+        for field in ["pose_keypoints_2d", "face_keypoints_2d", "hand_left_keypoints_2d", "hand_right_keypoints_2d"]:
+            keypoints = person.get(field)
+            if not keypoints:
+                continue
+
+            for i in range(1, len(keypoints), 3):
+                if len(keypoints) > i + 1:
+                    conf = keypoints[i + 1]
+                    if conf > 0:
+                        y_val = keypoints[i]
+                        if max_y is None or y_val > max_y:
+                            max_y = y_val
+
+        return max_y
+
+    def _apply_vertical_shift(self, person, shift):
+        if shift == 0.0:
+            return
+
+        for field in ["pose_keypoints_2d", "face_keypoints_2d", "hand_left_keypoints_2d", "hand_right_keypoints_2d"]:
+            keypoints = person.get(field)
+            if not keypoints:
+                continue
+
+            for i in range(1, len(keypoints), 3):
+                if len(keypoints) > i + 1:
+                    conf = keypoints[i + 1]
+                    if conf > 0:
+                        keypoints[i] += shift
+
     def _apply_unidirectional_scale(self, point, scale_factor, pivot, keypoint_idx, pivot_index):
         """Apply scaling only in the direction away from the body/pivot."""
         x, y = point
