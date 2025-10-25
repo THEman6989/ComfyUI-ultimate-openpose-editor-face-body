@@ -5,7 +5,7 @@ import { ComfyWidgets } from "../../../scripts/widgets.js";
 app.registerExtension({
 	name: "EditOpenposeText",
 	async beforeRegisterNodeDef(nodeType, nodeData, app) {
-		if (nodeData.name === "OpenposeEditorNode") {
+                if (nodeData.name === "OpenposeEditorNode10") {
 			function populate(text) {
                 let removed = 0;
 				if (this.widgets) {
