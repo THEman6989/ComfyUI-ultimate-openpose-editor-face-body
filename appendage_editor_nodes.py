@@ -260,6 +260,44 @@ class AppendageEditorNode10:
 
         person['pose_keypoints_2d'] = new_keypoints
 
+    def _edit_hip_width(self, person, width_scale):
+        """Scale the horizontal spacing of the hips and connected leg joints."""
+        if not isinstance(width_scale, (int, float)):
+            return
+
+        if width_scale <= 0:
+            return
+
+        if 'pose_keypoints_2d' not in person or not person['pose_keypoints_2d']:
+            return
+
+        if math.isclose(width_scale, 1.0):
+            return
+
+        keypoints = person['pose_keypoints_2d']
+        hip_indices = [8, 11]
+        center_candidates = []
+        for idx in hip_indices:
+            i = idx * 3
+            if len(keypoints) > i + 2 and keypoints[i + 2] > 0:
+                center_candidates.append(keypoints[i])
+
+        if not center_candidates:
+            return
+
+        center_x = sum(center_candidates) / len(center_candidates)
+        affected_indices = [8, 9, 10, 11, 12, 13]
+        new_keypoints = keypoints[:]
+
+        for idx in affected_indices:
+            i = idx * 3
+            if len(keypoints) > i + 2 and keypoints[i + 2] > 0:
+                original_x = keypoints[i]
+                offset = original_x - center_x
+                new_keypoints[i] = center_x + offset * width_scale
+
+        person['pose_keypoints_2d'] = new_keypoints
+
     def _edit_face_appendage(self, person, scale_factor, x_offset, y_offset, rotation, bidirectional_scale):
         """Edit facial keypoints stored in face_keypoints_2d."""
         keypoint_field = "face_keypoints_2d"
@@ -360,6 +398,11 @@ class AppendageEditorNode10V2(AppendageEditorNode10):
             "default": False,
             "tooltip": "When enabled, avoid shrink operations and shift the full body upward so feet remain grounded during scaling."
         })
+        appendage_options, appendage_meta = base["required"]["appendage_type"]
+        appendage_options = list(appendage_options)
+        if "hip_width" not in appendage_options:
+            appendage_options.append("hip_width")
+        base["required"]["appendage_type"] = (appendage_options, appendage_meta)
         return base
 
     def edit_appendage(self, POSE_KEYPOINT, appendage_type, scale=1.0, x_offset=0.0, y_offset=0.0, rotation=0.0,
@@ -410,6 +453,7 @@ class AppendageEditorNode10V2(AppendageEditorNode10):
                     person = current_frame['people'][person_idx_iter]
                     original_person_state = copy.deepcopy(person)
                     original_bottom = self._get_person_bottom(original_person_state)
+                    original_top = self._get_person_top(original_person_state)
 
                     effective_scale = current_scale
                     if only_up_flag and isinstance(effective_scale, (int, float)) and effective_scale < 1.0:
@@ -428,6 +472,7 @@ class AppendageEditorNode10V2(AppendageEditorNode10):
                             only_up_flag,
                             canvas_height,
                             original_bottom,
+                            original_top,
                         )
 
                     self._apply_appendage_edit(
@@ -457,21 +502,26 @@ class AppendageEditorNode10V2(AppendageEditorNode10):
             self._edit_face_appendage(person, scale_factor, x_offset, y_offset, rotation, bidirectional_scale)
         elif appendage_type == "full_person":
             self._edit_full_person(person, scale_factor, x_offset, y_offset, rotation, bidirectional_scale)
+        elif appendage_type == "hip_width":
+            self._edit_hip_width(person, scale_factor)
         else:
             self._edit_body_appendage(person, appendage_type, scale_factor, x_offset, y_offset, rotation, bidirectional_scale)
 
     def _limit_scale_for_canvas(self, person_snapshot, appendage_type, target_scale, x_offset, y_offset, rotation,
-                               bidirectional_scale, only_scale_up, canvas_height, original_bottom):
+                               bidirectional_scale, only_scale_up, canvas_height, original_bottom, original_top):
         if target_scale <= 1.0 or canvas_height is None:
             return target_scale
 
         if original_bottom is None:
             original_bottom = self._get_person_bottom(person_snapshot)
 
+        if original_top is None:
+            original_top = self._get_person_top(person_snapshot)
+
         if original_bottom is None:
             return target_scale
 
-        bottom_at_target, _ = self._simulate_bottom(
+        bottom_at_target, top_at_target, _ = self._simulate_vertical_bounds(
             person_snapshot,
             appendage_type,
             target_scale,
@@ -483,11 +533,14 @@ class AppendageEditorNode10V2(AppendageEditorNode10):
             original_bottom,
         )
 
-        if bottom_at_target is None or bottom_at_target <= canvas_height:
+        if (
+            (bottom_at_target is None or bottom_at_target <= canvas_height)
+            and (top_at_target is None or top_at_target >= 0)
+        ):
             return target_scale
 
         baseline_scale = 1.0
-        bottom_at_baseline, _ = self._simulate_bottom(
+        bottom_at_baseline, top_at_baseline, _ = self._simulate_vertical_bounds(
             person_snapshot,
             appendage_type,
             baseline_scale,
@@ -499,7 +552,11 @@ class AppendageEditorNode10V2(AppendageEditorNode10):
             original_bottom,
         )
 
-        if bottom_at_baseline is None or bottom_at_baseline > canvas_height:
+        if (
+            bottom_at_baseline is None
+            or bottom_at_baseline > canvas_height
+            or (top_at_baseline is not None and top_at_baseline < 0)
+        ):
             return baseline_scale
 
         low = baseline_scale
@@ -508,7 +565,7 @@ class AppendageEditorNode10V2(AppendageEditorNode10):
 
         for _ in range(25):
             mid = (low + high) / 2.0
-            bottom_mid, _ = self._simulate_bottom(
+            bottom_mid, top_mid, _ = self._simulate_vertical_bounds(
                 person_snapshot,
                 appendage_type,
                 mid,
@@ -520,12 +577,15 @@ class AppendageEditorNode10V2(AppendageEditorNode10):
                 original_bottom,
             )
 
-            if bottom_mid is None:
+            if bottom_mid is None and top_mid is None:
                 best = mid
                 low = mid
                 continue
 
-            if bottom_mid <= canvas_height:
+            if (
+                (bottom_mid is None or bottom_mid <= canvas_height)
+                and (top_mid is None or top_mid >= 0)
+            ):
                 best = mid
                 low = mid
             else:
@@ -533,8 +593,8 @@ class AppendageEditorNode10V2(AppendageEditorNode10):
 
         return best
 
-    def _simulate_bottom(self, person_snapshot, appendage_type, scale_factor, x_offset, y_offset, rotation, bidirectional_scale,
-                         only_scale_up, original_bottom):
+    def _simulate_vertical_bounds(self, person_snapshot, appendage_type, scale_factor, x_offset, y_offset, rotation,
+                                  bidirectional_scale, only_scale_up, original_bottom):
         simulated = self._simulate_basic_transform(
             person_snapshot,
             appendage_type,
@@ -546,14 +606,16 @@ class AppendageEditorNode10V2(AppendageEditorNode10):
         )
 
         bottom_after = self._get_person_bottom(simulated)
+        top_after = self._get_person_top(simulated)
         shift = 0.0
 
         if only_scale_up and original_bottom is not None and bottom_after is not None and bottom_after > original_bottom:
             shift = original_bottom - bottom_after
             self._apply_vertical_shift(simulated, shift)
             bottom_after = self._get_person_bottom(simulated)
+            top_after = self._get_person_top(simulated)
 
-        return bottom_after, shift
+        return bottom_after, top_after, shift
 
     def _simulate_basic_transform(self, person_snapshot, appendage_type, scale_factor, x_offset, y_offset, rotation,
                                   bidirectional_scale):
@@ -575,11 +637,31 @@ class AppendageEditorNode10V2(AppendageEditorNode10):
             return
 
         bottom = self._get_person_bottom(person)
-        if bottom is None:
-            return
+        top = self._get_person_top(person)
 
-        if bottom > canvas_height:
-            shift = canvas_height - bottom
+        lower_bound = -float('inf')
+        upper_bound = float('inf')
+
+        if top is not None:
+            lower_bound = max(lower_bound, -top)
+
+        if bottom is not None:
+            upper_bound = min(upper_bound, canvas_height - bottom)
+
+        shift = 0.0
+
+        if lower_bound <= upper_bound:
+            if shift < lower_bound:
+                shift = lower_bound
+            if shift > upper_bound:
+                shift = upper_bound
+        else:
+            if abs(lower_bound) <= abs(upper_bound):
+                shift = lower_bound
+            else:
+                shift = upper_bound
+
+        if not math.isclose(shift, 0.0):
             self._apply_vertical_shift(person, shift)
 
     def _get_person_bottom(self, person):
@@ -598,6 +680,23 @@ class AppendageEditorNode10V2(AppendageEditorNode10):
                             max_y = y_val
 
         return max_y
+
+    def _get_person_top(self, person):
+        min_y = None
+        for field in ["pose_keypoints_2d", "face_keypoints_2d", "hand_left_keypoints_2d", "hand_right_keypoints_2d"]:
+            keypoints = person.get(field)
+            if not keypoints:
+                continue
+
+            for i in range(1, len(keypoints), 3):
+                if len(keypoints) > i + 1:
+                    conf = keypoints[i + 1]
+                    if conf > 0:
+                        y_val = keypoints[i]
+                        if min_y is None or y_val < min_y:
+                            min_y = y_val
+
+        return min_y
 
     def _apply_vertical_shift(self, person, shift):
         if shift == 0.0:

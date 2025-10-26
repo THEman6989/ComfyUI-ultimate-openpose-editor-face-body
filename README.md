@@ -91,7 +91,7 @@ A new procedure editting node [AppendageEditorNode10](https://github.com/westNei
 - **Multi-person support** with configurable person index
 - **Animation-friendly** with list parameter handling and mismatch behaviors
 
-The enhanced **AppendageEditorNode10V2** builds on those controls with canvas-aware scaling limits and a toggleable "Only Scale Up" workflow. When enabled, the node automatically shifts the full pose upward so that lengthening legs keeps the feet grounded while preventing them from leaving the frame.
+The enhanced **AppendageEditorNode10V2** builds on those controls with canvas-aware scaling limits that watch the entire pose, a toggleable "Only Scale Up" workflow, and a dedicated **Hip-Width** mode for widening the torso rails. When enabled, the node automatically shifts the full pose upward so that lengthening legs keeps the feet grounded while preventing heads or feet from leaving the frame.
 
 One can chain N Appendage Editors together, and then render the final result.
 
