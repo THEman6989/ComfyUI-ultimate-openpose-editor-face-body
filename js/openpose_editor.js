@@ -153,7 +153,7 @@ app.registerExtension({
     name: "OpenposeEditor",
 
     async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (nodeData.name === "OpenposeEditorNode") {
+        if (nodeData.name === "OpenposeEditorNode10" || nodeData.name === "OpenposeEditorNode10V2") {
             addMenuHandler(nodeType, function (_, options) {
                 options.unshift({
                     content: "Open in Openpose Editor",

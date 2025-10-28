@@ -39,7 +39,8 @@ If you like the project, please give me a star! ⭐
 - Restart ComfyUI
 
 ## Usage
-- Insert node by `Right Click -> ultimate-openpose -> Openpose Editor Node`
+- Insert node by `Right Click -> ultimate-openpose -> OpenposeEditorNode10`
+- Use `OpenposeEditorNode10V2` for timeline-friendly smoothing with confidence and outlier controls when importing animated pose sequences.
 - `Right Click` on the node and select the `Open in Openpose Editor` to do the editting
     <p align="center">
       <img src="assets/editor_example_1.png" />
@@ -75,7 +76,7 @@ The node is very functional and rich features to fit all your needs.
     </p>
 
 ## New Node
-A new procedure editting node [AppendageEditorNode](https://github.com/westNeighbor/ComfyUI-ultimate-openpose-editor/pull/10) is added.
+A new procedure editting node [AppendageEditorNode10](https://github.com/westNeighbor/ComfyUI-ultimate-openpose-editor/pull/10) is added.
     <p align="center">
       <img src="assets/appendage_node.png" />
     </p>
@@ -85,11 +86,19 @@ A new procedure editting node [AppendageEditorNode](https://github.com/westNeigh
   - Hands/Feet: `left/right_hand`, `left/right_foot`
   - Torso: `torso`, `shoulders`
 - **Transform controls**: scale, rotation, x/y offset with animation support
-- **Scaling modes**: 
+- **Scaling modes**:
   - `bidirectional_scale=True`: scales in all directions from pivot
   - `bidirectional_scale=False`: scales only away from body (prevents adjacent part interference)
 - **Multi-person support** with configurable person index
 - **Animation-friendly** with list parameter handling and mismatch behaviors
+
+The enhanced **AppendageEditorNode10V2** builds on those controls with canvas-aware scaling limits that watch the entire pose, a toggleable "Only Scale Up" workflow, and a dedicated **Hip-Width** mode for widening the torso rails. When enabled, the node automatically shifts the full pose upward so that lengthening legs keeps the feet grounded while preventing heads or feet from leaving the frame.
+
+For rendering stability, **OpenposeEditorNode10V2** adds:
+
+- Confidence smoothing with an adjustable blend factor to calm low-certainty joints between frames.
+- Outlier suppression that detects extreme jumps relative to the canvas size and replaces them with interpolated poses.
+- A configurable confidence floor so interpolated keypoints stay usable for downstream pose-to-image workflows.
 
 One can chain N Appendage Editors together, and then render the final result.
 
