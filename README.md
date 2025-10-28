@@ -40,6 +40,7 @@ If you like the project, please give me a star! ⭐
 
 ## Usage
 - Insert node by `Right Click -> ultimate-openpose -> OpenposeEditorNode10`
+- Use `OpenposeEditorNode10V2` for timeline-friendly smoothing with confidence and outlier controls when importing animated pose sequences.
 - `Right Click` on the node and select the `Open in Openpose Editor` to do the editting
     <p align="center">
       <img src="assets/editor_example_1.png" />
@@ -92,6 +93,12 @@ A new procedure editting node [AppendageEditorNode10](https://github.com/westNei
 - **Animation-friendly** with list parameter handling and mismatch behaviors
 
 The enhanced **AppendageEditorNode10V2** builds on those controls with canvas-aware scaling limits that watch the entire pose, a toggleable "Only Scale Up" workflow, and a dedicated **Hip-Width** mode for widening the torso rails. When enabled, the node automatically shifts the full pose upward so that lengthening legs keeps the feet grounded while preventing heads or feet from leaving the frame.
+
+For rendering stability, **OpenposeEditorNode10V2** adds:
+
+- Confidence smoothing with an adjustable blend factor to calm low-certainty joints between frames.
+- Outlier suppression that detects extreme jumps relative to the canvas size and replaces them with interpolated poses.
+- A configurable confidence floor so interpolated keypoints stay usable for downstream pose-to-image workflows.
 
 One can chain N Appendage Editors together, and then render the final result.
 
